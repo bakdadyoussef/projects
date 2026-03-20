@@ -1,219 +1,130 @@
-import flet as ft
-from flet import *
-import random
-import time
+import sys
+import subprocess
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QRadioButton, QButtonGroup, QLabel, QFileDialog, QMessageBox
+)
+from PySide6.QtCore import Qt
 
-def main(page: ft.Page):
-    # ---------- THEME & STYLING ----------
-    page.title = "Stellar Dashboard"
-    page.theme_mode = ft.ThemeMode.DARK   # or LIGHT
-    page.padding = 20
-    page.spacing = 20
-    page.bgcolor = "#1E1E2F"              # deep dark background
 
-    # Custom color palette
-    primary = "#6C5CE7"    # vibrant purple
-    secondary = "#00B894"  # mint green
-    accent = "#FF7675"      # soft red
-    surface = "#2D2D44"     # card background
-    text_primary = "#FFFFFF"
-    text_secondary = "#B2BEC3"
+class GameLauncher(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Game Resolution Launcher")
+        self.setMinimumSize(400, 300)
 
-    # ---------- NAVIGATION RAIL ----------
-    rail = ft.NavigationRail(
-        selected_index=0,
-        label_type=ft.NavigationRailLabelType.ALL,
-        min_width=100,
-        min_extended_width=200,
-        group_alignment=-0.9,
-        destinations=[
-            ft.NavigationRailDestination(
-                icon=ft.icons.DASHBOARD_OUTLINED,
-                selected_icon=ft.icons.DASHBOARD,
-                label="Dashboard",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.icons.ANALYTICS_OUTLINED,
-                selected_icon=ft.icons.ANALYTICS,
-                label="Analytics",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.icons.SETTINGS_OUTLINED,
-                selected_icon=ft.icons.SETTINGS,
-                label="Settings",
-            ),
-        ],
-        on_change=lambda e: print(f"Selected: {e.control.selected_index}"),
-        bgcolor=surface,
-        elevation=5,
-    )
+        # Store the path of the selected .exe file
+        self.exe_path = ""
 
-    # ---------- ANIMATED STAT CARD ----------
-    def create_stat_card(title, value, icon, color, delta):
-        return ft.Container(
-            width=200,
-            height=120,
-            bgcolor=surface,
-            border_radius=15,
-            padding=15,
-            animate=ft.animation.Animation(300, ft.AnimationCurve.EASE_IN_OUT),
-            on_hover=lambda e: setattr(e.control, "scale", 1.02 if e.data == "true" else 1.0) or e.control.update(),
-            content=ft.Column(
-                [
-                    ft.Row(
-                        [
-                            ft.Icon(icon, color=color, size=30),
-                            ft.Text(title, size=14, color=text_secondary),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                    ft.Row(
-                        [
-                            ft.Text(value, size=28, weight=ft.FontWeight.BOLD, color=text_primary),
-                            ft.Container(
-                                content=ft.Text(delta, size=12, color="white"),
-                                bgcolor=secondary if "+" in delta else accent,
-                                border_radius=20,
-                                padding=ft.padding.only(left=8, right=8, top=3, bottom=3),
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                ],
-                spacing=5,
-            ),
+        # Common resolutions (you can add or remove as needed)
+        self.resolutions = [
+            "640x480",
+            "800x600",
+            "1024x768",
+            "1280x720",
+            "1366x768",
+            "1600x900",
+            "1920x1080",
+            "2560x1440",
+            "3840x2160"
+        ]
+
+        # Central widget and main layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+
+        # --- File selection row ---
+        file_layout = QHBoxLayout()
+        self.file_label = QLabel("No file selected")
+        self.file_label.setWordWrap(True)
+        browse_btn = QPushButton("Browse for .exe")
+        browse_btn.clicked.connect(self.browse_exe)
+        file_layout.addWidget(self.file_label)
+        file_layout.addWidget(browse_btn)
+        main_layout.addLayout(file_layout)
+
+        # --- Resolution selection area ---
+        res_label = QLabel("Select resolution (only one can be chosen):")
+        main_layout.addWidget(res_label)
+
+        # Button group to enforce mutual exclusivity
+        self.res_group = QButtonGroup(self)
+        # Optional: make the group exclusive (already default for QRadioButton)
+        self.res_group.setExclusive(True)
+
+        # Create a radio button for each resolution and add to layout
+        for res in self.resolutions:
+            radio = QRadioButton(res)
+            # If you want to use QCheckBox instead, replace QRadioButton with QCheckBox
+            # and uncomment the next line to make them exclusive:
+            # radio.setCheckable(True)
+            self.res_group.addButton(radio)
+            main_layout.addWidget(radio)
+
+        # (Optional) select the first resolution by default
+        if self.res_group.buttons():
+            self.res_group.buttons()[0].setChecked(True)
+
+        # --- Launch button ---
+        launch_btn = QPushButton("Launch Game")
+        launch_btn.clicked.connect(self.launch_game)
+        main_layout.addWidget(launch_btn, alignment=Qt.AlignCenter)
+
+        # Stretch to keep everything at the top
+        main_layout.addStretch()
+
+    def browse_exe(self):
+        """Open a file dialog to choose an .exe file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Game Executable", "", "Executable Files (*.exe);;All Files (*)"
         )
+        if file_path:
+            self.exe_path = file_path
+            self.file_label.setText(f"Selected: {file_path}")
 
-    # Stat cards data
-    stats = [
-        ("Revenue", "$54.2K", ft.icons.TRENDING_UP, secondary, "+12.3%"),
-        ("Users", "8,549", ft.icons.PEOPLE, primary, "+5.7%"),
-        ("Orders", "1,243", ft.icons.SHOPPING_CART, accent, "-2.1%"),
-        ("Conversion", "3.8%", ft.icons.PERCENT, "#FDCB6E", "+0.8%"),
-    ]
+    def launch_game(self):
+        """Launch the selected .exe with the chosen resolution arguments."""
+        # Check if an executable has been selected
+        if not self.exe_path:
+            QMessageBox.warning(self, "No File", "Please select a game executable first.")
+            return
 
-    cards_row = ft.Row(
-        [create_stat_card(*stat) for stat in stats],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        scroll=ft.ScrollMode.AUTO,
-    )
+        # Find which resolution is selected
+        selected_button = self.res_group.checkedButton()
+        if selected_button is None:
+            QMessageBox.warning(self, "No Resolution", "Please select a resolution.")
+            return
 
-    # ---------- LINE CHART ----------
-    chart_data = [
-        ft.LineChartData(
-            data_points=[
-                ft.LineChartDataPoint(1, 12),
-                ft.LineChartDataPoint(2, 25),
-                ft.LineChartDataPoint(3, 18),
-                ft.LineChartDataPoint(4, 30),
-                ft.LineChartDataPoint(5, 22),
-                ft.LineChartDataPoint(6, 35),
-                ft.LineChartDataPoint(7, 40),
-            ],
-            stroke_width=3,
-            color=primary,
-            curved=True,
-            stroke_cap_round=True,
-        )
-    ]
+        resolution_str = selected_button.text()
+        try:
+            width, height = resolution_str.split('x')
+        except ValueError:
+            QMessageBox.critical(self, "Error", f"Invalid resolution format: {resolution_str}")
+            return
 
-    chart = ft.LineChart(
-        data_series=chart_data,
-        border=ft.Border(bottom=ft.BorderSide(1, text_secondary)),
-        left_axis=ft.ChartAxis(labels_size=40, title=ft.Text("Sales", size=12, color=text_secondary)),
-        bottom_axis=ft.ChartAxis(labels=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], labels_size=30),
-        tooltip_bgcolor=surface,
-        expand=True,
-        min_y=0,
-        max_y=50,
-    )
+        # Build the command. Many games accept arguments like -w, -width, -W, etc.
+        # Here we use two common patterns: -width / -height and -w / -h.
+        # You can modify this list or make it configurable.
+        # We'll try both and let the game ignore the ones it doesn't understand.
+        cmd = [
+            self.exe_path,
+            "-width", width,
+            "-height", height,
+            "-w", width,
+            "-h", height
+        ]
 
-    chart_container = ft.Container(
-        content=chart,
-        bgcolor=surface,
-        border_radius=15,
-        padding=20,
-        height=250,
-        animate=ft.animation.Animation(500, ft.AnimationCurve.EASE),
-        shadow=ft.BoxShadow(blur_radius=10, color="#30000000", offset=ft.Offset(0, 5)),
-    )
+        try:
+            # Launch the process (detached from the GUI so it doesn't block)
+            subprocess.Popen(cmd)
+            QMessageBox.information(self, "Launched", f"Game launched with resolution {resolution_str}.")
+        except Exception as e:
+            QMessageBox.critical(self, "Launch Error", f"Failed to launch game:\n{str(e)}")
 
-    # ---------- RECENT ACTIVITIES (LIST TILE) ----------
-    activities = [
-        ("Order #1234", "Completed", secondary, ft.icons.CHECK_CIRCLE),
-        ("Order #1235", "Processing", accent, ft.icons.AUTORENEW),
-        ("Order #1236", "Shipped", primary, ft.icons.LOCAL_SHIPPING),
-    ]
 
-    activity_list = ft.Column(
-        [
-            ft.ListTile(
-                leading=ft.Icon(icon, color=color),
-                title=ft.Text(title, color=text_primary),
-                subtitle=ft.Text(status, color=text_secondary),
-            )
-            for title, status, color, icon in activities
-        ],
-        spacing=5,
-    )
-
-    activities_card = ft.Container(
-        content=ft.Column(
-            [
-                ft.Text("Recent Activities", size=18, weight=ft.FontWeight.BOLD, color=text_primary),
-                ft.Divider(height=20, color=text_secondary),
-                activity_list,
-            ]
-        ),
-        bgcolor=surface,
-        border_radius=15,
-        padding=20,
-        expand=True,
-    )
-
-    # ---------- MAIN CONTENT AREA (using ResponsiveRow for adaptability) ----------
-    main_content = ft.ResponsiveRow(
-        [
-            ft.Column(col={"sm": 12, "md": 8}, controls=[cards_row, chart_container]),
-            ft.Column(col={"sm": 12, "md": 4}, controls=[activities_card]),
-        ],
-        spacing=20,
-        run_spacing=20,
-    )
-
-    # ---------- APP BAR ----------
-    page.appbar = ft.AppBar(
-        title=ft.Text("Stellar Dashboard", color=text_primary, weight=ft.FontWeight.BOLD),
-        bgcolor=surface,
-        elevation=0,
-        actions=[
-            ft.IconButton(icon=ft.icons.NOTIFICATIONS_OUTLINED, icon_color=text_primary),
-            ft.IconButton(icon=ft.icons.PERSON_OUTLINED, icon_color=text_primary),
-        ],
-    )
-
-    # ---------- PAGE LAYOUT (NavigationRail + main content) ----------
-    page.add(
-        ft.Row(
-            [
-                rail,
-                ft.VerticalDivider(width=1, color=text_secondary),
-                ft.Container(content=main_content, expand=True, padding=10),
-            ],
-            expand=True,
-            spacing=0,
-        )
-    )
-
-    # ---------- LIVE DATA UPDATE (simulate real‑time) ----------
-    def update_data():
-        while True:
-            # Randomly change chart data point (just for demo)
-            new_point = random.randint(10, 45)
-            chart.data_series[0].data_points[3].y = new_point
-            chart.update()
-            time.sleep(5)
-
-    page.run_task(update_data)
-
-ft.app(target=main)
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = GameLauncher()
+    window.show()
+    sys.exit(app.exec())
