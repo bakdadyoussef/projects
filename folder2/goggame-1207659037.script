@@ -1,0 +1,18 @@
+{
+    "actions": [
+        {
+            "install": {
+                "action": "savePath",
+                "arguments": {
+                    "savePath": "{userdocs}/Remedy/AlanWake_GOG_Version",
+                    "type": "folder"
+                }
+            },
+            "languages": [
+                "*"
+            ],
+            "name": "saveFolders"
+        }
+    ],
+    "productId": "1207659037"
+}
