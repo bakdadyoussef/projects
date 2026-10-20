@@ -1,0 +1,8 @@
+search portscan
+auxiliary/scanner/portscan/syn
+info
+options
+set ports 1-65535
+set rhosts 192.168.1.1
+run
+exploit
